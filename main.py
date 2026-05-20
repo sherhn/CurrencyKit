@@ -2,19 +2,16 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import math
 import httpx
-from datetime import date
 from typing import Optional
 import asyncio
-import os
 
 app = FastAPI(title="Currency Service", version="1.0.0")
 
 EXCHANGE_API = "https://api.exchangerate-api.com/v4/latest"
-HISTORY_API = "https://api.frankfurter.app"
 
 # Количество ретраев и таймаут берутся из переменных окружения
-HTTP_RETRIES = int(os.getenv("HTTP_RETRIES", "3"))
-HTTP_TIMEOUT = float(os.getenv("HTTP_TIMEOUT", "5.0"))
+HTTP_RETRIES = 3
+HTTP_TIMEOUT = 5.0
 
 
 def make_client() -> httpx.AsyncClient:
@@ -156,128 +153,7 @@ async def spread(base: str, target: str, spread_pct: float = 0.1):
     }
 
 
-# 4. Исторический курс на дату
-@app.get("/history/{base}/{target}", summary="Конвертация по историческому курсу")
-async def history_rate(base: str, target: str, on_date: date, amount: float = 1.0):
-    """
-    Возвращает курс и результат конвертации на конкретную дату.
-    Источник данных: frankfurter.app (ЕЦБ).
-
-    Принимает:
-        base    (path)  — базовая валюта, ISO 4217
-        target  (path)  — целевая валюта, ISO 4217
-        on_date (query) — дата в формате YYYY-MM-DD (обязательно)
-        amount  (query) — сумма в базовой валюте, по умолчанию 1.0
-
-    Возвращает:
-        base      — базовая валюта
-        target    — целевая валюта
-        on_date   — запрошенная дата
-        amount    — исходная сумма
-        rate      — курс на указанную дату (6 знаков)
-        converted — результат конвертации (4 знака)
-    """
-    async with make_client() as client:
-        url = f"{HISTORY_API}/{on_date}?from={base.upper()}&to={target.upper()}&amount={amount}"
-        resp = await client.get(url)
-        if resp.status_code != 200:
-            raise HTTPException(status_code=502, detail="Ошибка получения исторического курса")
-        data = resp.json()
-        if "rates" not in data or target.upper() not in data["rates"]:
-            raise HTTPException(status_code=404, detail="Данные не найдены")
-        converted = data["rates"][target.upper()]
-        rate = converted / amount
-    return {
-        "base": base.upper(),
-        "target": target.upper(),
-        "on_date": str(on_date),
-        "amount": amount,
-        "rate": round(rate, 6),
-        "converted": round(converted, 4),
-    }
-
-
-# 5. Динамика курса за период
-@app.get("/history/{base}/{target}/range", summary="Динамика курса за период")
-async def history_range(
-    base: str,
-    target: str,
-    from_date: date,
-    to_date: date,
-    amount: float = 1.0,
-):
-    """
-    Возвращает ряд курсов за период from_date..to_date включительно
-    и агрегированную статистику по нему.
-    Выходные и праздничные дни ЕЦБ в ответе отсутствуют — это ожидаемо.
-    Источник данных: frankfurter.app (ЕЦБ).
-
-    Принимает:
-        base      (path)  — базовая валюта, ISO 4217
-        target    (path)  — целевая валюта, ISO 4217
-        from_date (query) — начало периода, YYYY-MM-DD (обязательно)
-        to_date   (query) — конец периода, YYYY-MM-DD (обязательно)
-        amount    (query) — сумма в базовой валюте, по умолчанию 1.0
-
-    Возвращает:
-        base      — базовая валюта
-        target    — целевая валюта
-        from_date — начало периода
-        to_date   — конец периода
-        amount    — исходная сумма
-        points    — количество торговых дней в ответе
-        min_rate  — минимальный курс за период
-        max_rate  — максимальный курс за период
-        avg_rate  — средний курс за период (6 знаков)
-        data      — массив объектов { date, rate, converted } по каждому дню
-    """
-    if from_date > to_date:
-        raise HTTPException(status_code=400, detail="from_date должна быть раньше to_date")
-
-    async with make_client() as client:
-        url = (
-            f"{HISTORY_API}/{from_date}..{to_date}"
-            f"?from={base.upper()}&to={target.upper()}&amount={amount}"
-        )
-        resp = await client.get(url)
-        if resp.status_code != 200:
-            raise HTTPException(status_code=502, detail="Ошибка получения исторических данных")
-        data = resp.json()
-
-    raw_rates = data.get("rates", {})
-    if not raw_rates:
-        raise HTTPException(status_code=404, detail="Данные за указанный период не найдены")
-
-    points = []
-    for day, currencies in sorted(raw_rates.items()):
-        converted = currencies.get(target.upper())
-        if converted is None:
-            continue
-        points.append({
-            "date": day,
-            "rate": round(converted / amount, 6),
-            "converted": round(converted, 4),
-        })
-
-    if not points:
-        raise HTTPException(status_code=404, detail=f"Валюта {target} не найдена в ответе")
-
-    rates_only = [p["rate"] for p in points]
-    return {
-        "base": base.upper(),
-        "target": target.upper(),
-        "from_date": str(from_date),
-        "to_date": str(to_date),
-        "amount": amount,
-        "points": len(points),
-        "min_rate": min(rates_only),
-        "max_rate": max(rates_only),
-        "avg_rate": round(sum(rates_only) / len(rates_only), 6),
-        "data": points,
-    }
-
-
-# 6. Арбитражный треугольник
+# 4. Арбитражный треугольник
 @app.get("/arbitrage", summary="Арбитражный треугольник A→B→C→A")
 async def arbitrage(a: str, b: str, c: str, amount: float = 1000.0):
     """
@@ -331,7 +207,7 @@ async def arbitrage(a: str, b: str, c: str, amount: float = 1000.0):
     }
 
 
-# 7. Пакетная конвертация
+# 5. Пакетная конвертация
 @app.get("/batch", summary="Пакетная конвертация одной базовой валюты в несколько целевых")
 async def batch_convert(base: str, targets: str, amount: float = 1.0):
     """
@@ -395,8 +271,6 @@ def root():
             "GET /rate/{base}/{target}": "Текущий курс",
             "POST /convert": "Конвертация (nines/ceil/floor)",
             "GET /spread/{base}/{target}": "Bid/Ask спред",
-            "GET /history/{base}/{target}?on_date=YYYY-MM-DD": "Исторический курс на дату",
-            "GET /history/{base}/{target}/range?from_date=YYYY-MM-DD&to_date=YYYY-MM-DD": "Динамика за период",
             "GET /batch?base=USD&targets=EUR,GBP,JPY": "Пакетная конвертация",
             "GET /arbitrage?a=USD&b=EUR&c=GBP": "Арбитражный треугольник",
         },
