@@ -1,5 +1,4 @@
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
 import math
 import os
 import httpx
@@ -53,13 +52,6 @@ async def current_rate(base: str, target: str):
 
 
 # 2. Конвертация с дополнительными операциями
-class ConvertRequest(BaseModel):
-    base: str
-    target: str
-    amount: float
-    operation: Optional[str] = None  # nines | ceil | floor
-
-
 def apply_nines(value: float) -> float:
     """Привести к "ценовым девяткам": 9.21 -> 9.99, 12.50 -> 19.99."""
     if value < 1:
@@ -69,13 +61,13 @@ def apply_nines(value: float) -> float:
     return round(upper - 0.01, 2)
 
 
-@app.post("/convert", summary="Конвертация с дополнительными операциями")
-async def convert(req: ConvertRequest):
+@app.get("/convert", summary="Конвертация с дополнительными операциями")
+async def convert(base: str, target: str, amount: float, operation: Optional[str] = None):
     """
     Конвертирует сумму из базовой валюты в целевую и опционально
     применяет округление к результату.
 
-    Принимает (JSON body):
+    Принимает (query params):
         base – базовая валюта, ISO 4217
         target – целевая валюта, ISO 4217
         amount – сумма в базовой валюте
@@ -94,26 +86,26 @@ async def convert(req: ConvertRequest):
         operation – применённая операция или null
         result – итоговое значение после операции
     """
-    rate = await get_rate(req.base, req.target)
-    raw = req.amount * rate
+    rate = await get_rate(base, target)
+    raw = amount * rate
 
     result = raw
-    if req.operation == "nines":
+    if operation == "nines":
         result = apply_nines(raw)
-    elif req.operation == "ceil":
+    elif operation == "ceil":
         result = math.ceil(raw)
-    elif req.operation == "floor":
+    elif operation == "floor":
         result = math.floor(raw)
-    elif req.operation is not None:
+    elif operation is not None:
         raise HTTPException(status_code=400, detail="operation: nines | ceil | floor | null")
 
     return {
-        "base": req.base.upper(),
-        "target": req.target.upper(),
-        "amount": req.amount,
+        "base": base.upper(),
+        "target": target.upper(),
+        "amount": amount,
         "rate": rate,
         "raw": round(raw, 4),
-        "operation": req.operation,
+        "operation": operation,
         "result": result,
     }
 
@@ -270,7 +262,7 @@ def root():
         },
         "endpoints": {
             "GET /rate/{base}/{target}": "Текущий курс",
-            "POST /convert": "Конвертация (nines/ceil/floor)",
+            "GET /convert?base=USD&target=EUR&amount=100&operation=nines": "Конвертация (nines/ceil/floor)",
             "GET /spread/{base}/{target}": "Bid/Ask спред",
             "GET /batch?base=USD&targets=EUR,GBP,JPY": "Пакетная конвертация",
             "GET /arbitrage?a=USD&b=EUR&c=GBP": "Арбитражный треугольник",
