@@ -40,13 +40,13 @@ async def current_rate(base: str, target: str):
     Возвращает текущий обменный курс одной валюты к другой.
 
     Принимает:
-        base   (path) — базовая валюта, ISO 4217, например USD
-        target (path) — целевая валюта, ISO 4217, например EUR
+        base (path) – базовая валюта, ISO 4217, например USD
+        target (path) – целевая валюта, ISO 4217, например EUR
 
     Возвращает:
-        base   — базовая валюта (upper)
-        target — целевая валюта (upper)
-        rate   — текущий курс: сколько единиц target стоит 1 единица base
+        base – базовая валюта (upper)
+        target – целевая валюта (upper)
+        rate – текущий курс: сколько единиц target стоит 1 единица base
     """
     rate = await get_rate(base, target)
     return {"base": base.upper(), "target": target.upper(), "rate": rate}
@@ -61,7 +61,7 @@ class ConvertRequest(BaseModel):
 
 
 def apply_nines(value: float) -> float:
-    """Привести к «ценовым девяткам»: 9.21 → 9.99, 12.50 → 19.99."""
+    """Привести к "ценовым девяткам": 9.21 -> 9.99, 12.50 -> 19.99."""
     if value < 1:
         return round(value, 2)
     magnitude = 10 ** math.floor(math.log10(value))
@@ -76,23 +76,23 @@ async def convert(req: ConvertRequest):
     применяет округление к результату.
 
     Принимает (JSON body):
-        base      — базовая валюта, ISO 4217
-        target    — целевая валюта, ISO 4217
-        amount    — сумма в базовой валюте
-        operation — необязательно; одно из:
-                      "nines"  — привести к «ценовым девяткам» (9.99, 19.99…)
-                      "ceil"   — округлить вверх до целого
-                      "floor"  — округлить вниз до целого
-                      null     — без округления (по умолчанию)
+        base – базовая валюта, ISO 4217
+        target – целевая валюта, ISO 4217
+        amount – сумма в базовой валюте
+        operation – необязательно; одно из:
+                      "nines" – привести к "ценовым девяткам" (9.99, 19.99...)
+                      "ceil" – округлить вверх до целого
+                      "floor" – округлить вниз до целого
+                      null – без округления (по умолчанию)
 
     Возвращает:
-        base      — базовая валюта
-        target    — целевая валюта
-        amount    — исходная сумма
-        rate      — курс на момент запроса
-        raw       — результат без округления (4 знака)
-        operation — применённая операция или null
-        result    — итоговое значение после операции
+        base – базовая валюта
+        target – целевая валюта
+        amount – исходная сумма
+        rate – курс на момент запроса
+        raw – результат без округления (4 знака)
+        operation – применённая операция или null
+        result – итоговое значение после операции
     """
     rate = await get_rate(req.base, req.target)
     raw = req.amount * rate
@@ -125,19 +125,19 @@ async def spread(base: str, target: str, spread_pct: float = 0.1):
     Рассчитывает bid и ask вокруг текущего mid-курса.
 
     Принимает:
-        base       (path)  — базовая валюта, ISO 4217
-        target     (path)  — целевая валюта, ISO 4217
-        spread_pct (query) — полный спред в процентах, по умолчанию 0.1
-                             (bid = mid × (1 − spread/2), ask = mid × (1 + spread/2))
+        base (path) – базовая валюта, ISO 4217
+        target (path) – целевая валюта, ISO 4217
+        spread_pct (query) – полный спред в процентах, по умолчанию 0.1
+                             (bid = mid * (1 − spread/2), ask = mid * (1 + spread/2))
 
     Возвращает:
-        base       — базовая валюта
-        target     — целевая валюта
-        mid        — средний курс (6 знаков)
-        bid        — курс покупки (6 знаков)
-        ask        — курс продажи (6 знаков)
-        spread_pct — полный спред в процентах
-        spread_abs — абсолютный спред (ask − bid, 6 знаков)
+        base – базовая валюта
+        target – целевая валюта
+        mid – средний курс (6 знаков)
+        bid – курс покупки (6 знаков)
+        ask – курс продажи (6 знаков)
+        spread_pct – полный спред в процентах
+        spread_abs – абсолютный спред (ask − bid, 6 знаков)
     """
     rate = await get_rate(base, target)
     half = spread_pct / 100 / 2
@@ -155,28 +155,28 @@ async def spread(base: str, target: str, spread_pct: float = 0.1):
 
 
 # 4. Арбитражный треугольник
-@app.get("/arbitrage", summary="Арбитражный треугольник A→B→C→A")
+@app.get("/arbitrage", summary="Арбитражный треугольник A->B->C->A")
 async def arbitrage(a: str, b: str, c: str, amount: float = 1000.0):
     """
-    Проверяет, есть ли прибыль при последовательной конвертации A→B→C→A.
+    Проверяет, есть ли прибыль при последовательной конвертации A->B->C->A.
     Все три курса запрашиваются параллельно.
 
     Принимает:
-        a      (query) — первая валюта, ISO 4217
-        b      (query) — вторая валюта, ISO 4217
-        c      (query) — третья валюта, ISO 4217
-        amount (query) — стартовая сумма в валюте A, по умолчанию 1000.0
+        a (query) – первая валюта, ISO 4217
+        b (query) – вторая валюта, ISO 4217
+        c (query) – третья валюта, ISO 4217
+        amount (query) – стартовая сумма в валюте A, по умолчанию 1000.0
 
     Возвращает:
-        path         — цепочка конвертации, например USD→EUR→GBP→USD
-        start_amount — исходная сумма
-        after_ab     — сумма после A→B (4 знака)
-        after_bc     — сумма после B→C (4 знака)
-        after_ca     — сумма после C→A (4 знака)
-        profit       — абсолютная прибыль/убыток (4 знака)
-        profit_pct   — прибыль в процентах от start_amount (4 знака)
-        is_profitable— true, если прибыль положительная
-        rates        — словарь с тремя использованными курсами
+        path – цепочка конвертации, например USD->EUR->GBP->USD
+        start_amount – исходная сумма
+        after_ab – сумма после A->B (4 знака)
+        after_bc – сумма после B->C (4 знака)
+        after_ca – сумма после C->A (4 знака)
+        profit – абсолютная прибыль/убыток (4 знака)
+        profit_pct – прибыль в процентах от start_amount (4 знака)
+        is_profitable – true, если прибыль положительная
+        rates – словарь с тремя использованными курсами
     """
     rate_ab, rate_bc, rate_ca = await asyncio.gather(
         get_rate(a, b),
@@ -192,7 +192,7 @@ async def arbitrage(a: str, b: str, c: str, amount: float = 1000.0):
     profit_pct = (profit / amount) * 100
 
     return {
-        "path": f"{a.upper()}→{b.upper()}→{c.upper()}→{a.upper()}",
+        "path": f"{a.upper()}->{b.upper()}->{c.upper()}->{a.upper()}",
         "start_amount": amount,
         "after_ab": round(step1, 4),
         "after_bc": round(step2, 4),
@@ -216,17 +216,17 @@ async def batch_convert(base: str, targets: str, amount: float = 1.0):
     Если отдельная валюта недоступна, остальные результаты всё равно возвращаются.
 
     Принимает:
-        base    (query) — базовая валюта, ISO 4217
-        targets (query) — целевые валюты через запятую, например EUR,GBP,JPY,CHF
+        base (query) – базовая валюта, ISO 4217
+        targets (query) – целевые валюты через запятую, например EUR,GBP,JPY,CHF
                           максимум 30 валют за запрос
-        amount  (query) — сумма в базовой валюте, по умолчанию 1.0
+        amount (query) – сумма в базовой валюте, по умолчанию 1.0
 
     Возвращает:
-        base        — базовая валюта
-        amount      — исходная сумма
-        conversions — словарь { ВАЛЮТА: { rate, converted, error } } для каждой целевой валюты;
+        base – базовая валюта
+        amount – исходная сумма
+        conversions – словарь { ВАЛЮТА: { rate, converted, error } } для каждой целевой валюты;
                       поля rate и converted равны null при ошибке
-        summary     — итог: total, successful, failed, errors (словарь с описаниями ошибок)
+        summary – итог: total, successful, failed, errors (словарь с описаниями ошибок)
     """
     target_list = [t.strip().upper() for t in targets.split(",") if t.strip()]
     if not target_list:
