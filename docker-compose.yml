@@ -4,3 +4,12 @@ services:
     ports:
       - "8000:8000"
     restart: unless-stopped
+    environment:
+      - HTTP_RETRIES=3
+      - HTTP_TIMEOUT=5.0
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

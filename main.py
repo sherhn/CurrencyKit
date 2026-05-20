@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import math
+import os
 import httpx
 from typing import Optional
 import asyncio
@@ -10,8 +11,8 @@ app = FastAPI(title="Currency Service", version="1.0.0")
 EXCHANGE_API = "https://api.exchangerate-api.com/v4/latest"
 
 # Количество ретраев и таймаут берутся из переменных окружения
-HTTP_RETRIES = 3
-HTTP_TIMEOUT = 5.0
+HTTP_RETRIES = int(os.getenv("HTTP_RETRIES", 3))
+HTTP_TIMEOUT = float(os.getenv("HTTP_TIMEOUT", 5.0))
 
 
 def make_client() -> httpx.AsyncClient:
@@ -275,3 +276,8 @@ def root():
             "GET /arbitrage?a=USD&b=EUR&c=GBP": "Арбитражный треугольник",
         },
     }
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
